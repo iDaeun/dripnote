@@ -1,6 +1,8 @@
 import * as db from './db.js';
+import { FLAVOR_TREE, flavorOf, canonicalFlavor, inkOn, noteMatched } from './flavors.js';
 
-const TASTE_TAGS = ['산미 강함', '단맛', '쓴맛', '묽다', '진하다'];
+// 맛이 아니라 추출 상태에 가까운 느낌. 맛은 플레이버 휠(flavors.js)로 고른다.
+const TASTE_TAGS = ['산미 강함', '쓴맛', '떫다', '묽다', '진하다'];
 const PROCESSES = ['워시드', '내추럴', '허니', '기타'];
 const ROASTS = ['라이트', '미디엄', '다크'];
 const RATIOS = [14, 15, 16, 17];
@@ -141,6 +143,19 @@ function starsHtml(rating) {
   return `<span class="stars" role="img" aria-label="별점 ${rating}점"><span class="s-bg">★★★★★</span><span class="s-fg" style="width:${(rating / 5) * 100}%">★★★★★</span></span>`;
 }
 
+// 플레이버 휠에 있는 맛은 휠 색으로, 없는 말은 기본 칩으로 보여준다.
+function flavorChip(name, { removable = false, matched = false } = {}) {
+  const f = flavorOf(name);
+  const style = f ? ` style="background:${f.color};color:${inkOn(f.color)}"` : '';
+  return `<span class="fchip${f ? '' : ' plain'}"${style}>${esc(name)}${matched ? ' ✓' : ''}${removable ? `<button type="button" data-unpick="${esc(name)}" aria-label="${esc(name)} 빼기">×</button>` : ''}</span>`;
+}
+
+// 고른 맛들의 색을 한 줄 띠로 이어 붙인다.
+function colorBand(names) {
+  const colors = names.map(n => flavorOf(n)?.color).filter(Boolean);
+  return colors.length ? `<div class="band" aria-hidden="true">${colors.map(c => `<i style="background:${c}"></i>`).join('')}</div>` : '';
+}
+
 function beanCardHtml(bean, date, thumb, asLink) {
   if (!bean) return '<div class="bean-card empty">원두를 고르지 않았어요</div>';
   const days = roastDays(bean, date);
@@ -220,12 +235,13 @@ async function viewRecords() {
   const items = await Promise.all(brews.map(async b => {
     const bean = beanMap[b.beanId];
     const thumb = b.photoIds?.[0] ? await photoUrl(b.photoIds[0]) : '';
-    const search = [bean?.name, bean?.roastery, b.recipeName, b.memo, ...(b.tags || [])].join(' ').toLowerCase();
+    const search = [bean?.name, bean?.roastery, b.recipeName, b.memo, ...(b.tags || []), ...(b.flavors || [])].join(' ').toLowerCase();
     return `<a class="item" href="#/brew/${b.id}" data-search="${esc(search)}" data-fav="${b.favorite ? 1 : 0}" data-rating="${b.rating || 0}">
       ${thumbHtml(thumb)}
       <div class="item-main">
         <div class="item-title">${esc(bean?.name || '원두 미지정')}${b.favorite ? `<span class="fav">${ICON.starFill}</span>` : ''}</div>
         <div class="sub">${shortDate(b.date)} · ${num(b.beanG)}g ${ratioText(num(b.beanG), total(b.stages))} · ${b.rating ? `${b.rating.toFixed(1)}점` : '별점 없음'}</div>
+        ${colorBand(b.flavors || [])}
       </div></a>`;
   }));
 
@@ -298,6 +314,7 @@ async function viewBrewForm({ name, id, q }) {
       dripper: recent?.dripper || '',
       rating: 0,
       tags: [],
+      flavors: [],
       memo: '',
       photoIds: [],
       parentId: q.get('from') || '',
@@ -314,6 +331,9 @@ async function viewBrewForm({ name, id, q }) {
   const removed = [];
   const back = editing ? `#/brew/${b.id}` : (b.recipeId ? `#/recipe/${b.recipeId}` : '#/records');
   const selectable = beans.filter(x => !x.finished || x.id === b.beanId);
+  b.flavors = [...new Set((b.flavors || []).map(canonicalFlavor))];
+  b.tags = b.tags || [];
+  let flavorPath = [];
 
   return {
     html: `${bar(editing ? '기록 수정' : '기록 남기기', { back, right: '<button class="text-btn" id="save">완료</button>' })}
@@ -327,7 +347,8 @@ async function viewBrewForm({ name, id, q }) {
       </div>
       <label class="field"><span>드리퍼</span><input id="dripper" value="${esc(b.dripper)}" placeholder="V60, 칼리타 웨이브"></label>
       <div class="field"><span>별점</span><div class="rating-input" id="rating"></div></div>
-      <div class="field"><span>맛</span><div class="pills wrap" id="tags">${TASTE_TAGS.map(t => `<button type="button" class="pill ${b.tags.includes(t) ? 'on' : ''}" data-t="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>
+      <div class="field"><span>느낀 맛 (색으로 기억해요)</span><div id="fpicked"></div><div class="fpicker" id="fpicker"></div></div>
+      <div class="field"><span>추출 느낌</span><div class="pills wrap" id="tags">${TASTE_TAGS.map(t => `<button type="button" class="pill ${b.tags.includes(t) ? 'on' : ''}" data-t="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>
       <label class="field"><span>메모</span><textarea id="memo" rows="4" placeholder="맛, 향, 다음에 바꿔볼 점">${esc(b.memo)}</textarea></label>
       <div class="field"><span>사진 (최대 ${MAX_PHOTOS}장, 첫 장이 대표)</span><div class="photos" id="photos"></div><input type="file" id="file" accept="image/*" multiple hidden></div>
       <p class="err" id="err" hidden></p>
@@ -347,7 +368,40 @@ async function viewBrewForm({ name, id, q }) {
           ${i === 0 ? '<span class="ph-badge">대표</span>' : `<button type="button" class="ph-badge ghost" data-first="${i}">대표로</button>`}
         </div>`).join('') + (photos.length < MAX_PHOTOS ? `<button type="button" class="ph-add" id="phAdd" aria-label="사진 추가">${ICON.camera}</button>` : '');
       };
-      renderBean(); renderRating(); renderPhotos();
+      const renderFlavors = () => {
+        $('#fpicked').innerHTML = b.flavors.length
+          ? `${colorBand(b.flavors)}<div class="pills wrap">${b.flavors.map(n => flavorChip(n, { removable: true })).join('')}</div>`
+          : '<p class="sub">아래에서 느낀 맛을 골라요. 큰 분류만 골라도 돼요.</p>';
+        const current = flavorPath.at(-1);
+        const options = current ? current.children : FLAVOR_TREE;
+        $('#fpicker').innerHTML = `
+          <div class="fcrumbs"><button type="button" data-crumb="-1">전체</button>${flavorPath.map((n, i) => ` › <button type="button" data-crumb="${i}">${esc(n.name)}</button>`).join('')}</div>
+          <div class="fopts">
+            ${current ? `<button type="button" class="fopt group ${b.flavors.includes(current.name) ? 'on' : ''}" style="--c:${current.color}" data-pick="${esc(current.name)}"><i></i>${esc(current.name)} (으)로 고르기</button>` : ''}
+            ${options.map(n => `<button type="button" class="fopt ${b.flavors.includes(n.name) ? 'on' : ''}" style="--c:${n.color}" data-node="${esc(n.name)}"><i></i>${esc(n.name)}<small>${esc(n.en)}</small>${n.children.length ? ' ›' : ''}</button>`).join('')}
+          </div>`;
+      };
+      const togglePick = name => {
+        b.flavors = b.flavors.includes(name) ? b.flavors.filter(x => x !== name) : [...b.flavors, name];
+        renderFlavors();
+      };
+      renderBean(); renderRating(); renderPhotos(); renderFlavors();
+
+      $('#fpicked').addEventListener('click', e => {
+        const btn = e.target.closest('[data-unpick]');
+        if (btn) togglePick(btn.dataset.unpick);
+      });
+      $('#fpicker').addEventListener('click', e => {
+        const crumb = e.target.closest('[data-crumb]');
+        if (crumb) { flavorPath = flavorPath.slice(0, +crumb.dataset.crumb + 1); return renderFlavors(); }
+        const pick = e.target.closest('[data-pick]');
+        if (pick) return togglePick(pick.dataset.pick);
+        const opt = e.target.closest('[data-node]');
+        if (!opt) return;
+        const node = flavorOf(opt.dataset.node);
+        if (node.children.length) { flavorPath = node.path.map(flavorOf); renderFlavors(); }
+        else togglePick(node.name);
+      });
 
       $('#date').addEventListener('change', e => { b.date = e.target.value || today(); renderBean(); });
       $('#bean').addEventListener('change', e => { b.beanId = e.target.value; renderBean(); });
@@ -424,6 +478,7 @@ async function viewBrew({ id }) {
   const photos = (await Promise.all((b.photoIds || []).map(photoUrl))).filter(Boolean);
   const favBtn = () => `<button class="icon-btn fav-btn ${b.favorite ? 'on' : ''}" id="fav" aria-label="즐겨찾기">${b.favorite ? ICON.starFill : ICON.star}</button>`;
   const water = total(b.stages);
+  b.flavors = (b.flavors || []).map(canonicalFlavor);
 
   return {
     html: `${bar(fmtDate(b.date), { back: '#/records', right: `<a class="icon-btn" href="#/brew-edit/${b.id}" aria-label="수정">${ICON.edit}</a>${favBtn()}` })}
@@ -436,6 +491,11 @@ async function viewBrew({ id }) {
         ${b.dripper ? `<div class="row"><span class="label">드리퍼</span><span>${esc(b.dripper)}</span></div>` : ''}
       </div>
       <div class="rating-view">${starsHtml(b.rating || 0)}<span class="rating-num">${b.rating ? b.rating.toFixed(1) : '별점 없음'}</span></div>
+      ${b.flavors?.length ? `<div class="flavor-view">${colorBand(b.flavors)}<div class="pills wrap">${b.flavors.map(n => flavorChip(n)).join('')}</div></div>` : ''}
+      ${bean?.notes?.length ? (() => {
+        const found = bean.notes.filter(n => noteMatched(n, b.flavors || [])).length;
+        return `<div class="box"><div class="row"><span class="label">원두 컵노트</span><span class="sub">${found} / ${bean.notes.length} 찾음</span></div><div class="pills wrap">${bean.notes.map(n => flavorChip(n, { matched: noteMatched(n, b.flavors || []) })).join('')}</div></div>`;
+      })() : ''}
       ${b.tags?.length ? `<div class="pills wrap">${b.tags.map(t => `<span class="pill on">${esc(t)}</span>`).join('')}</div>` : ''}
       ${b.memo ? `<p class="memo">${esc(b.memo)}</p>` : ''}
       ${photos.length ? `<div class="photos view">${photos.map(u => `<img src="${u}" alt="">`).join('')}</div>` : ''}
@@ -806,7 +866,7 @@ async function viewBean({ id }) {
     html: `${bar('원두 상세', { back: '#/beans', right: `<a class="icon-btn" href="#/bean-edit/${bean.id}" aria-label="수정">${ICON.edit}</a>` })}
     <main class="page">
       <div class="bean-head">${thumbHtml(thumb)}<div><div class="item-title big">${esc(bean.name)}</div>${meta ? `<div class="sub">${esc(meta)}</div>` : ''}</div></div>
-      ${bean.notes?.length ? `<div class="pills wrap">${bean.notes.map(n => `<span class="pill">${esc(n)}</span>`).join('')}</div>` : ''}
+      ${bean.notes?.length ? `<div class="pills wrap">${bean.notes.map(n => flavorChip(n)).join('')}</div>` : ''}
       <div class="stats">
         <div class="box"><div class="label">로스팅 후</div><div class="stat">${days !== null ? `${days}일째` : '-'}</div></div>
         <div class="box"><div class="label">남은 양</div><div class="stat">${left ? `${left.left} g` : '-'}</div>${left ? `<div class="sub">약 ${left.times}번</div>` : ''}</div>
@@ -851,7 +911,7 @@ async function viewBeanEdit({ id, q }) {
         <label class="field"><span>가공 방식</span><select id="process">${opt(PROCESSES, bean.process)}</select></label>
         <label class="field"><span>로스팅 정도</span><select id="roast">${opt(ROASTS, bean.roast)}</select></label>
       </div>
-      <label class="field"><span>컵노트 (쉼표로 구분)</span><input id="notes" value="${esc((bean.notes || []).join(', '))}" placeholder="자스민, 레몬, 홍차"></label>
+      <label class="field"><span>컵노트 (쉼표로 구분, 플레이버 휠 이름과 같으면 색이 붙어요)</span><input id="notes" value="${esc((bean.notes || []).join(', '))}" placeholder="자스민, 레몬, 홍차"></label>
       <label class="field"><span>로스팅 날짜</span><input type="date" id="roastDate" value="${esc(bean.roastDate)}"></label>
       <div class="two">
         <label class="field"><span>구매 용량 (g)</span><input id="purchasedG" inputmode="decimal" value="${num(bean.purchasedG) || ''}" placeholder="200"></label>

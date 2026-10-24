@@ -1,12 +1,13 @@
 // 오프라인에서도 앱이 열리도록 앱 파일을 캐시한다.
 // 온라인이면 항상 새 파일을 받아오고, 실패할 때만 캐시를 쓴다.
-const CACHE = 'dripnote-v2';
+const CACHE = 'dripnote-v3';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './db.js',
+  './flavors.js',
   './manifest.webmanifest',
   './icons/icon-180.png',
   './icons/icon-192.png',
