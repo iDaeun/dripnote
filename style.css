@@ -166,26 +166,27 @@ details summary { cursor: pointer; color: var(--accent); font-size: 14px; paddin
 .unit-input.small input { padding-right: 10px; }
 
 /* 레시피 차수 */
-.stage-head, .stage { display: grid; grid-template-columns: 1fr 96px 84px 32px; gap: 8px; align-items: center; }
+.stage-head, .stage { display: grid; grid-template-columns: minmax(0, 1fr) 64px 56px 112px 22px; gap: 5px; align-items: center; }
 .stage-head { font-size: 12px; color: var(--text-3); padding: 0 10px; margin-bottom: -6px; }
-.stage-head span:nth-child(2), .stage-head span:nth-child(3) { text-align: right; }
+.stage-head span:nth-child(n+2):nth-child(-n+4) { text-align: right; }
 #stages { display: flex; flex-direction: column; gap: 6px; }
 .stage {
   padding: 8px 10px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--surface);
   cursor: pointer; user-select: none; -webkit-user-select: none; transition: background .15s, border-color .15s;
 }
 .stage .st-name { font-weight: 600; font-size: 15px; }
-.stage .st-name small { font-weight: 400; color: var(--text-2); font-size: 12px; }
-.stage .unit-input input { padding: 8px 26px 8px 8px; }
-.st-cum { text-align: right; font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
-.st-del { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; color: var(--text-3); border-radius: 16px; }
+.stage .st-name small { display: block; font-weight: 400; color: var(--text-2); font-size: 11px; line-height: 1.2; }
+.stage .unit-input input { padding: 8px 22px 8px 6px; }
+.stage .unit-input em { right: 7px; font-size: 13px; }
+.st-cum { text-align: right; font-weight: 700; font-size: 15px; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.2px; }
+.st-del { width: 22px; height: 32px; display: flex; align-items: center; justify-content: center; color: var(--text-3); border-radius: 12px; }
 .st-del svg { width: 16px; height: 16px; }
 .st-memo { grid-column: 1 / -1; border: 0; background: transparent; padding: 0 0 0 2px; font-size: 13px; color: var(--text-2); }
 .st-memo:focus { outline: none; }
 .st-memo::placeholder { color: var(--text-3); opacity: .6; }
 .stage.active { background: var(--accent-bg); border-color: var(--accent); }
 .stage.active .st-cum, .stage.active .st-name { color: var(--accent-text); }
-.stage.active .st-cum { font-size: 26px; }
+.stage.active .st-cum { font-size: 17px; }
 .stage.done { opacity: .45; }
 .add-row { border: 1.5px dashed var(--border); border-radius: var(--radius); padding: 10px; color: var(--text-2); font-size: 14px; }
 .total { display: flex; justify-content: space-between; align-items: center; background: var(--surface-2); border-radius: var(--radius); padding: 12px 14px; font-size: 15px; }
@@ -212,7 +213,9 @@ details summary { cursor: pointer; color: var(--accent); font-size: 14px; paddin
 
 /* 기록 */
 .stage-table { margin: 4px 0; }
-.st-row { display: grid; grid-template-columns: 1fr 64px 72px; gap: 8px; font-size: 14px; padding: 4px 0; }
+.st-row { display: grid; grid-template-columns: 1fr 64px 104px; gap: 8px; font-size: 14px; padding: 4px 0; }
+.st-row strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.st-row.head { font-size: 12px; color: var(--text-3); padding-bottom: 0; }
 .st-row span:nth-child(2), .st-row strong { text-align: right; }
 .st-row small { color: var(--text-2); }
 .st-row em { display: block; font-style: normal; font-size: 12px; color: var(--text-3); }

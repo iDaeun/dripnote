@@ -37,6 +37,9 @@ const go = hash => { location.hash = hash; };
 const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
 const round1 = n => Math.round(n * 10) / 10;
 const total = stages => (stages || []).reduce((sum, s) => sum + num(s.water), 0);
+const totalSec = stages => (stages || []).reduce((sum, s) => sum + num(s.sec), 0);
+const fmtTime = sec => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+const fmtCum = (water, sec) => `${round1(water)}g / ${fmtTime(sec)}`;
 const ratioText = (beanG, water) => (beanG > 0 && water > 0 ? `1:${round1(water / beanG)}` : '-');
 const byId = list => Object.fromEntries(list.map(x => [x.id, x]));
 const byNewest = (a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || '');
@@ -147,14 +150,15 @@ function beanCardHtml(bean, date, thumb, asLink) {
 }
 
 function stagesTable(stages) {
-  let cum = 0;
-  return `<div class="stage-table">${stages.map((s, i) => {
+  let cum = 0, cumSec = 0;
+  return `<div class="stage-table"><div class="st-row head"><span>차수</span><span>물 / 초</span><span>누적</span></div>${stages.map((s, i) => {
     cum += num(s.water);
-    return `<div class="st-row"><span>${i + 1}차${s.label ? ` <small>${esc(s.label)}</small>` : ''}${s.memo ? `<em>${esc(s.memo)}</em>` : ''}</span><span>${round1(num(s.water))} g</span><strong>${round1(cum)} g</strong></div>`;
+    cumSec += num(s.sec);
+    return `<div class="st-row"><span>${i + 1}차${s.label ? ` <small>${esc(s.label)}</small>` : ''}${s.memo ? `<em>${esc(s.memo)}</em>` : ''}</span><span>${round1(num(s.water))} g<em>${num(s.sec) ? `${num(s.sec)}초` : ''}</em></span><strong>${fmtCum(cum, cumSec)}</strong></div>`;
   }).join('')}</div>`;
 }
 
-const recipeSummary = r => `${num(r.beanG)}g · ${round1(total(r.stages))}g · ${ratioText(num(r.beanG), total(r.stages))} · ${r.stages.length}차`;
+const recipeSummary = r => `${num(r.beanG)}g · ${round1(total(r.stages))}g · ${ratioText(num(r.beanG), total(r.stages))} · ${r.stages.length}차${totalSec(r.stages) ? ` · ${fmtTime(totalSec(r.stages))}` : ''}`;
 
 function notFound(back) {
   return { html: `${bar('찾을 수 없어요', { back })}<main class="page"><p class="empty">삭제됐거나 없는 항목이에요.</p></main>` };
@@ -194,10 +198,10 @@ function newRecipe() {
     name: '새 레시피',
     beanG: 15,
     stages: [
-      { water: 30, memo: '', label: '뜸들이기' },
-      { water: 70, memo: '', label: '' },
-      { water: 60, memo: '', label: '' },
-      { water: 65, memo: '', label: '' },
+      { water: 30, sec: 30, memo: '', label: '뜸들이기' },
+      { water: 70, sec: 30, memo: '', label: '' },
+      { water: 60, sec: 30, memo: '', label: '' },
+      { water: 65, sec: 60, memo: '', label: '' },
     ],
     links: [],
     favorite: false,
@@ -289,7 +293,7 @@ async function viewBrewForm({ name, id, q }) {
       recipeId: recipe?.id || '',
       recipeName: recipe?.name || '',
       beanG: num(recipe?.beanG),
-      stages: (recipe?.stages || []).map(s => ({ water: num(s.water), memo: s.memo || '', label: s.label || '' })),
+      stages: (recipe?.stages || []).map(s => ({ water: num(s.water), sec: num(s.sec), memo: s.memo || '', label: s.label || '' })),
       dripper: recent?.dripper || '',
       rating: 0,
       tags: [],
@@ -427,7 +431,7 @@ async function viewBrew({ id }) {
       <div class="box">
         <div class="row"><span class="label">레시피</span>${recipe ? `<a href="#/recipe/${recipe.id}">${esc(b.recipeName)}</a>` : `<span>${esc(b.recipeName || '레시피 없음')}</span>`}</div>
         ${b.stages.length ? stagesTable(b.stages) : ''}
-        <div class="row total-row"><span>원두 ${num(b.beanG)} g · 총 ${round1(water)} g</span><strong>${ratioText(num(b.beanG), water)}</strong></div>
+        <div class="row total-row"><span>원두 ${num(b.beanG)} g · 총 ${round1(water)} g${totalSec(b.stages) ? ` · ${fmtTime(totalSec(b.stages))}` : ''}</span><strong>${ratioText(num(b.beanG), water)}</strong></div>
         ${b.dripper ? `<div class="row"><span class="label">드리퍼</span><span>${esc(b.dripper)}</span></div>` : ''}
       </div>
       <div class="rating-view">${starsHtml(b.rating || 0)}<span class="rating-num">${b.rating ? b.rating.toFixed(1) : '별점 없음'}</span></div>
@@ -510,7 +514,7 @@ async function viewRecipe({ id, q }) {
       <label class="field inline"><span>원두</span><select id="bean"><option value="">선택 안 함</option>${beans.map(b => `<option value="${b.id}" ${b.id === session.beanId ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}<option value="__new">+ 원두 등록</option></select></label>
       <div class="row-field"><span class="label">원두량</span><span class="unit-input"><input id="beanG" inputmode="decimal" value="${num(r.beanG) || ''}" aria-label="원두량"><em>g</em></span></div>
       <div class="row-field"><span class="label">비율</span><div class="pills" id="ratios">${RATIOS.map(x => `<button class="pill" data-r="${x}">1:${x}</button>`).join('')}</div></div>
-      <div class="stage-head"><span>차수</span><span>물</span><span>누적</span><span></span></div>
+      <div class="stage-head"><span>차수</span><span>물</span><span>초</span><span>누적</span><span></span></div>
       <div id="stages"></div>
       <button class="add-row" id="addStage">+ 차수 추가</button>
       <div class="total" id="total"></div>
@@ -563,15 +567,17 @@ async function viewRecipe({ id, q }) {
 
       const updateTotals = () => {
         const t = total(r.stages);
-        $('#total').innerHTML = `<span>총 ${round1(t)} g</span><strong>${ratioText(num(r.beanG), t)}</strong>`;
+        const sec = totalSec(r.stages);
+        $('#total').innerHTML = `<span>총 ${round1(t)} g${sec ? ` · ${fmtTime(sec)}` : ''}</span><strong>${ratioText(num(r.beanG), t)}</strong>`;
         const current = num(r.beanG) > 0 ? round1(t / num(r.beanG)) : 0;
         $$('#ratios .pill').forEach(p => p.classList.toggle('on', +p.dataset.r === current));
       };
       const updateCums = () => {
-        let cum = 0;
+        let cum = 0, cumSec = 0;
         $$('.stage', stagesEl).forEach((el, i) => {
           cum += num(r.stages[i].water);
-          $('.st-cum', el).textContent = `${round1(cum)} g`;
+          cumSec += num(r.stages[i].sec);
+          $('.st-cum', el).textContent = fmtCum(cum, cumSec);
         });
         updateTotals();
       };
@@ -585,6 +591,7 @@ async function viewRecipe({ id, q }) {
         stagesEl.innerHTML = r.stages.map((s, i) => `<div class="stage" data-i="${i}">
           <div class="st-name">${i + 1}차${s.label ? ` <small>${esc(s.label)}</small>` : ''}</div>
           <span class="unit-input"><input class="st-water" inputmode="decimal" value="${num(s.water) || ''}" aria-label="${i + 1}차 물량"><em>g</em></span>
+          <span class="unit-input"><input class="st-sec" inputmode="numeric" value="${num(s.sec) || ''}" aria-label="${i + 1}차 시간(초)"><em>초</em></span>
           <div class="st-cum"></div>
           <button class="st-del" aria-label="${i + 1}차 삭제">${ICON.x}</button>
           <input class="st-memo" value="${esc(s.memo || '')}" placeholder="메모" aria-label="${i + 1}차 메모">
@@ -635,6 +642,7 @@ async function viewRecipe({ id, q }) {
         if (!row) return;
         const s = r.stages[+row.dataset.i];
         if (e.target.classList.contains('st-water')) { s.water = num(e.target.value); updateCums(); }
+        if (e.target.classList.contains('st-sec')) { s.sec = num(e.target.value); updateCums(); }
         if (e.target.classList.contains('st-memo')) s.memo = e.target.value;
         changed();
       });
@@ -657,7 +665,7 @@ async function viewRecipe({ id, q }) {
         applyActive();
       });
       $('#addStage').addEventListener('click', () => {
-        r.stages.push({ water: 0, memo: '', label: '' });
+        r.stages.push({ water: 0, sec: 0, memo: '', label: '' });
         renderStages();
         $$('.st-water', stagesEl).at(-1).focus();
         changed();

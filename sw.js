@@ -1,6 +1,6 @@
 // 오프라인에서도 앱이 열리도록 앱 파일을 캐시한다.
 // 온라인이면 항상 새 파일을 받아오고, 실패할 때만 캐시를 쓴다.
-const CACHE = 'dripnote-v1';
+const CACHE = 'dripnote-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -30,7 +30,8 @@ self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   event.respondWith(
-    fetch(req)
+    // no-cache: 브라우저 HTTP 캐시에 옛 파일이 있어도 서버에 새 버전이 있는지 확인한다.
+    fetch(req, { cache: 'no-cache' })
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(cache => cache.put(req, copy));
