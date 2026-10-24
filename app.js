@@ -514,7 +514,7 @@ async function viewRecipe({ id, q }) {
       <label class="field inline"><span>원두</span><select id="bean"><option value="">선택 안 함</option>${beans.map(b => `<option value="${b.id}" ${b.id === session.beanId ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}<option value="__new">+ 원두 등록</option></select></label>
       <div class="row-field"><span class="label">원두량</span><span class="unit-input"><input id="beanG" inputmode="decimal" value="${num(r.beanG) || ''}" aria-label="원두량"><em>g</em></span></div>
       <div class="row-field"><span class="label">비율</span><div class="pills" id="ratios">${RATIOS.map(x => `<button class="pill" data-r="${x}">1:${x}</button>`).join('')}</div></div>
-      <div class="stage-head"><span>차수</span><span>물</span><span>초</span><span>누적</span><span></span></div>
+      <div class="stage-head"><span>차수</span><span>물(g)</span><span>초</span><span>누적</span><span></span></div>
       <div id="stages"></div>
       <button class="add-row" id="addStage">+ 차수 추가</button>
       <div class="total" id="total"></div>
@@ -590,8 +590,8 @@ async function viewRecipe({ id, q }) {
       const renderStages = () => {
         stagesEl.innerHTML = r.stages.map((s, i) => `<div class="stage" data-i="${i}">
           <div class="st-name">${i + 1}차${s.label ? ` <small>${esc(s.label)}</small>` : ''}</div>
-          <span class="unit-input"><input class="st-water" inputmode="decimal" value="${num(s.water) || ''}" aria-label="${i + 1}차 물량"><em>g</em></span>
-          <span class="unit-input"><input class="st-sec" inputmode="numeric" value="${num(s.sec) || ''}" aria-label="${i + 1}차 시간(초)"><em>초</em></span>
+          <input class="st-water" inputmode="decimal" value="${num(s.water) || ''}" aria-label="${i + 1}차 물량(g)">
+          <input class="st-sec" inputmode="numeric" value="${num(s.sec) || ''}" aria-label="${i + 1}차 시간(초)">
           <div class="st-cum"></div>
           <button class="st-del" aria-label="${i + 1}차 삭제">${ICON.x}</button>
           <input class="st-memo" value="${esc(s.memo || '')}" placeholder="메모" aria-label="${i + 1}차 메모">

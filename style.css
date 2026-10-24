@@ -166,7 +166,7 @@ details summary { cursor: pointer; color: var(--accent); font-size: 14px; paddin
 .unit-input.small input { padding-right: 10px; }
 
 /* 레시피 차수 */
-.stage-head, .stage { display: grid; grid-template-columns: minmax(0, 1fr) 64px 56px 112px 22px; gap: 5px; align-items: center; }
+.stage-head, .stage { display: grid; grid-template-columns: minmax(0, 1fr) 48px 44px 144px 20px; gap: 4px; align-items: center; }
 .stage-head { font-size: 12px; color: var(--text-3); padding: 0 10px; margin-bottom: -6px; }
 .stage-head span:nth-child(n+2):nth-child(-n+4) { text-align: right; }
 #stages { display: flex; flex-direction: column; gap: 6px; }
@@ -176,9 +176,8 @@ details summary { cursor: pointer; color: var(--accent); font-size: 14px; paddin
 }
 .stage .st-name { font-weight: 600; font-size: 15px; }
 .stage .st-name small { display: block; font-weight: 400; color: var(--text-2); font-size: 11px; line-height: 1.2; }
-.stage .unit-input input { padding: 8px 22px 8px 6px; }
-.stage .unit-input em { right: 7px; font-size: 13px; }
-.st-cum { text-align: right; font-weight: 700; font-size: 15px; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.2px; }
+.stage .st-water, .stage .st-sec { padding: 8px 6px; text-align: right; }
+.st-cum { text-align: right; font-weight: 700; font-size: 19px; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.2px; }
 .st-del { width: 22px; height: 32px; display: flex; align-items: center; justify-content: center; color: var(--text-3); border-radius: 12px; }
 .st-del svg { width: 16px; height: 16px; }
 .st-memo { grid-column: 1 / -1; border: 0; background: transparent; padding: 0 0 0 2px; font-size: 13px; color: var(--text-2); }
@@ -186,7 +185,7 @@ details summary { cursor: pointer; color: var(--accent); font-size: 14px; paddin
 .st-memo::placeholder { color: var(--text-3); opacity: .6; }
 .stage.active { background: var(--accent-bg); border-color: var(--accent); }
 .stage.active .st-cum, .stage.active .st-name { color: var(--accent-text); }
-.stage.active .st-cum { font-size: 17px; }
+.stage.active .st-cum { font-size: 20px; }
 .stage.done { opacity: .45; }
 .add-row { border: 1.5px dashed var(--border); border-radius: var(--radius); padding: 10px; color: var(--text-2); font-size: 14px; }
 .total { display: flex; justify-content: space-between; align-items: center; background: var(--surface-2); border-radius: var(--radius); padding: 12px 14px; font-size: 15px; }
