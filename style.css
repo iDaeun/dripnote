@@ -249,3 +249,10 @@ details summary { cursor: pointer; color: var(--accent); font-size: 14px; paddin
 }
 .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; color: var(--text-3); }
 .tabbar a.on { color: var(--accent); font-weight: 600; }
+
+/* 레시피 메모와 연관 기록 */
+.memo-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-3); }
+.related { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 14px; }
+.related[open] { padding-bottom: 12px; }
+.related .list { border: 0; border-radius: 0; margin: 0 -14px; }
+.related .item.compact .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

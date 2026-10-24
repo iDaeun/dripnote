@@ -158,6 +158,7 @@ function stagesTable(stages) {
   }).join('')}</div>`;
 }
 
+const recipeMemoLine = r => (r.memo ? `<div class="sub memo-line">${esc(r.memo)}</div>` : '');
 const recipeSummary = r => `${num(r.beanG)}g · ${round1(total(r.stages))}g · ${ratioText(num(r.beanG), total(r.stages))} · ${r.stages.length}차${totalSec(r.stages) ? ` · ${fmtTime(totalSec(r.stages))}` : ''}`;
 
 function notFound(back) {
@@ -266,7 +267,7 @@ async function viewRecords() {
 
 async function viewPickRecipe() {
   const recipes = (await db.all('recipes')).sort(byRecipe);
-  const list = recipes.map(r => `<a class="item" href="#/recipe/${r.id}?via=pick"><div class="item-main"><div class="item-title">${esc(r.name)}${r.favorite ? `<span class="fav">${ICON.starFill}</span>` : ''}</div><div class="sub">${recipeSummary(r)}</div></div>${ICON.chev}</a>`).join('');
+  const list = recipes.map(r => `<a class="item" href="#/recipe/${r.id}?via=pick"><div class="item-main"><div class="item-title">${esc(r.name)}${r.favorite ? `<span class="fav">${ICON.starFill}</span>` : ''}</div><div class="sub">${recipeSummary(r)}</div>${recipeMemoLine(r)}</div>${ICON.chev}</a>`).join('');
   return {
     html: `${bar('어떤 레시피로 내릴까요?', { back: '#/records' })}<main class="page">
       <a class="item new" href="#/recipe/new?via=pick">${ICON.plus}<span>새 레시피로 시작</span></a>
@@ -477,7 +478,7 @@ async function viewBrew({ id }) {
 
 async function viewRecipes() {
   const recipes = (await db.all('recipes')).sort(byRecipe);
-  const list = recipes.map(r => `<a class="item" href="#/recipe/${r.id}"><div class="item-main"><div class="item-title">${esc(r.name)}${r.favorite ? `<span class="fav">${ICON.starFill}</span>` : ''}</div><div class="sub">${recipeSummary(r)}${r.links?.length ? ` · 링크 ${r.links.length}` : ''}</div></div>${ICON.chev}</a>`).join('');
+  const list = recipes.map(r => `<a class="item" href="#/recipe/${r.id}"><div class="item-main"><div class="item-title">${esc(r.name)}${r.favorite ? `<span class="fav">${ICON.starFill}</span>` : ''}</div><div class="sub">${recipeSummary(r)}${r.links?.length ? ` · 링크 ${r.links.length}` : ''}</div>${recipeMemoLine(r)}</div>${ICON.chev}</a>`).join('');
   return {
     html: `${bar('레시피')}<main class="page">
       ${recipes.length ? `<div class="list">${list}</div>` : `<div class="empty-state"><p>내 레시피를 만들어보세요</p><p class="sub">원두량과 차수별 물량을 넣으면 누적 g을 계산해줘요.</p><a class="btn primary" href="#/recipe/new">새 레시피</a></div>`}
@@ -491,8 +492,11 @@ async function viewRecipe({ id, q }) {
   if (!r) return notFound('#/recipes');
   r.links = r.links || [];
   if (q.get('bean')) session.beanId = q.get('bean');
-  const beans = (await db.all('beans')).filter(b => !b.finished || b.id === session.beanId).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  const [allBeans, allBrews] = await Promise.all([db.all('beans'), db.all('brews')]);
+  const beans = allBeans.filter(b => !b.finished || b.id === session.beanId).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   if (session.beanId && !beans.some(b => b.id === session.beanId)) session.beanId = '';
+  const beanMap = byId(allBeans);
+  const related = allBrews.filter(b => b.recipeId === r.id).sort(byNewest);
   const from = q.get('from') || '';
   const back = from ? `#/brew/${from}` : q.get('via') === 'pick' ? '#/pick-recipe' : '#/recipes';
   const extra = new URLSearchParams(q);
@@ -507,10 +511,12 @@ async function viewRecipe({ id, q }) {
   return {
     html: `<header class="bar">
       <a class="icon-btn" href="${back}" aria-label="뒤로">${ICON.back}</a>
-      <input class="title-input" id="name" value="${esc(r.name)}" aria-label="레시피 이름">
+      <h1 id="title">${esc(r.name)}</h1>
       <div class="bar-right"><span class="saved" id="saved"></span><button class="icon-btn fav-btn ${r.favorite ? 'on' : ''}" id="fav" aria-label="즐겨찾기">${favIcon()}</button></div>
     </header>
     <main class="page">
+      <label class="field"><span>레시피 이름</span><input id="name" value="${isNew ? '' : esc(r.name)}" placeholder="V60 기본 4회"></label>
+      <label class="field"><span>메모</span><textarea id="rMemo" rows="2" placeholder="분쇄도, 물 온도, 이 레시피의 특징">${esc(r.memo || '')}</textarea></label>
       <label class="field inline"><span>원두</span><select id="bean"><option value="">선택 안 함</option>${beans.map(b => `<option value="${b.id}" ${b.id === session.beanId ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}<option value="__new">+ 원두 등록</option></select></label>
       <div class="row-field"><span class="label">원두량</span><span class="unit-input"><input id="beanG" inputmode="decimal" value="${num(r.beanG) || ''}" aria-label="원두량"><em>g</em></span></div>
       <div class="row-field"><span class="label">비율</span><div class="pills" id="ratios">${RATIOS.map(x => `<button class="pill" data-r="${x}">1:${x}</button>`).join('')}</div></div>
@@ -543,6 +549,10 @@ async function viewRecipe({ id, q }) {
         </details>
       </section>
       <button class="btn primary block" id="toBrew">이 레시피로 기록 남기기</button>
+      <details class="related">
+        <summary>이 레시피로 내린 기록 (${related.length})</summary>
+        ${related.length ? `<div class="list">${related.map(b => `<a class="item compact" href="#/brew/${b.id}"><div class="item-main"><div class="row"><span>${shortDate(b.date)} · ${esc(beanMap[b.beanId]?.name || '원두 미지정')}</span><span>${b.rating ? b.rating.toFixed(1) : '-'}</span></div><div class="sub">${num(b.beanG)}g ${ratioText(num(b.beanG), total(b.stages))}${b.memo ? ` · ${esc(b.memo)}` : ''}</div></div></a>`).join('')}</div>` : '<p class="sub">아직 이 레시피로 남긴 기록이 없어요.</p>'}
+      </details>
       ${isNew ? '' : '<button class="btn danger-text block" id="del">레시피 삭제</button>'}
     </main>`,
     bind() {
@@ -612,7 +622,12 @@ async function viewRecipe({ id, q }) {
       renderLinks();
       savedEl.textContent = isNew ? '' : '저장됨';
 
-      $('#name').addEventListener('input', e => { r.name = e.target.value.trim() || '이름 없는 레시피'; changed(); });
+      $('#name').addEventListener('input', e => {
+        r.name = e.target.value.trim() || '새 레시피';
+        $('#title').textContent = r.name;
+        changed();
+      });
+      $('#rMemo').addEventListener('input', e => { r.memo = e.target.value; changed(); });
       $('#fav').addEventListener('click', e => {
         r.favorite = !r.favorite;
         const btn = e.currentTarget;
