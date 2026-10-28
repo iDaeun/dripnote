@@ -41,7 +41,7 @@ const round1 = n => Math.round(n * 10) / 10;
 const total = stages => (stages || []).reduce((sum, s) => sum + num(s.water), 0);
 const totalSec = stages => (stages || []).reduce((sum, s) => sum + num(s.sec), 0);
 const fmtTime = sec => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
-const fmtCum = (water, sec) => `${round1(water)}g / ${fmtTime(sec)}`;
+const fmtCum = (water, sec) => `${fmtTime(sec)} / ${round1(water)}g`;
 const ratioText = (beanG, water) => (beanG > 0 && water > 0 ? `1:${round1(water / beanG)}` : '-');
 const byId = list => Object.fromEntries(list.map(x => [x.id, x]));
 const byNewest = (a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || '');
@@ -166,10 +166,10 @@ function beanCardHtml(bean, date, thumb, asLink) {
 
 function stagesTable(stages) {
   let cum = 0, cumSec = 0;
-  return `<div class="stage-table"><div class="st-row head"><span>차수</span><span>물 / 초</span><span>누적</span></div>${stages.map((s, i) => {
+  return `<div class="stage-table"><div class="st-row head"><span>차수</span><span>초 / 물</span><span>누적</span></div>${stages.map((s, i) => {
     cum += num(s.water);
     cumSec += num(s.sec);
-    return `<div class="st-row"><span>${i + 1}차${s.label ? ` <small>${esc(s.label)}</small>` : ''}${s.memo ? `<em>${esc(s.memo)}</em>` : ''}</span><span>${round1(num(s.water))} g<em>${num(s.sec) ? `${num(s.sec)}초` : ''}</em></span><strong>${fmtCum(cum, cumSec)}</strong></div>`;
+    return `<div class="st-row"><span>${i + 1}차${s.label ? ` <small>${esc(s.label)}</small>` : ''}${s.memo ? `<em>${esc(s.memo)}</em>` : ''}</span><span>${num(s.sec) ? `${num(s.sec)}초` : '-'}<em>${round1(num(s.water))} g</em></span><strong>${fmtCum(cum, cumSec)}</strong></div>`;
   }).join('')}</div>`;
 }
 
@@ -580,7 +580,7 @@ async function viewRecipe({ id, q }) {
       <label class="field inline"><span>원두</span><select id="bean"><option value="">선택 안 함</option>${beans.map(b => `<option value="${b.id}" ${b.id === session.beanId ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}<option value="__new">+ 원두 등록</option></select></label>
       <div class="row-field"><span class="label">원두량</span><span class="unit-input"><input id="beanG" inputmode="decimal" value="${num(r.beanG) || ''}" aria-label="원두량"><em>g</em></span></div>
       <div class="row-field"><span class="label">비율</span><div class="pills" id="ratios">${RATIOS.map(x => `<button class="pill" data-r="${x}">1:${x}</button>`).join('')}</div></div>
-      <div class="stage-head"><span>차수</span><span>물(g)</span><span>초</span><span>누적</span><span></span></div>
+      <div class="stage-head"><span>차수</span><span>초</span><span>물(g)</span><span>누적</span><span></span></div>
       <div id="stages"></div>
       <button class="add-row" id="addStage">+ 차수 추가</button>
       <div class="total" id="total"></div>
@@ -657,14 +657,16 @@ async function viewRecipe({ id, q }) {
           el.classList.toggle('done', active >= 0 && i < active);
         });
       };
+      // 메모는 평소엔 글자로만 보여서 행 어디를 눌러도 하이라이트된다. 편집은 버튼으로만 연다.
+      const memoLine = (s, i) => `${s.memo ? `<span class="st-memo-text">${esc(s.memo)}</span>` : ''}<button class="st-memo-btn" aria-label="${i + 1}차 메모 ${s.memo ? '수정' : '추가'}">${s.memo ? '수정' : '+ 메모'}</button>`;
       const renderStages = () => {
         stagesEl.innerHTML = r.stages.map((s, i) => `<div class="stage" data-i="${i}">
           <div class="st-name">${i + 1}차${s.label ? ` <small>${esc(s.label)}</small>` : ''}</div>
-          <input class="st-water" inputmode="decimal" value="${num(s.water) || ''}" aria-label="${i + 1}차 물량(g)">
           <input class="st-sec" inputmode="numeric" value="${num(s.sec) || ''}" aria-label="${i + 1}차 시간(초)">
+          <input class="st-water" inputmode="decimal" value="${num(s.water) || ''}" aria-label="${i + 1}차 물량(g)">
           <div class="st-cum"></div>
           <button class="st-del" aria-label="${i + 1}차 삭제">${ICON.x}</button>
-          <input class="st-memo" value="${esc(s.memo || '')}" placeholder="메모" aria-label="${i + 1}차 메모">
+          <div class="st-memo-line">${memoLine(s, i)}</div>
         </div>`).join('');
         updateCums();
         applyActive();
@@ -735,6 +737,16 @@ async function viewRecipe({ id, q }) {
           changed();
           return;
         }
+        if (e.target.closest('.st-memo-btn')) {
+          const line = $('.st-memo-line', row);
+          line.innerHTML = `<input class="st-memo" value="${esc(r.stages[i].memo || '')}" placeholder="이 차수 메모 (예: 원을 그리며 천천히)" aria-label="${i + 1}차 메모">`;
+          const input = $('.st-memo', line);
+          input.focus();
+          const close = () => { line.innerHTML = memoLine(r.stages[i], i); };
+          input.addEventListener('blur', close, { once: true });
+          input.addEventListener('keydown', ev => { if (ev.key === 'Enter') input.blur(); });
+          return;
+        }
         if (e.target.closest('input')) return;
         active = active === i ? -1 : i;
         applyActive();
@@ -742,7 +754,7 @@ async function viewRecipe({ id, q }) {
       $('#addStage').addEventListener('click', () => {
         r.stages.push({ water: 0, sec: 0, memo: '', label: '' });
         renderStages();
-        $$('.st-water', stagesEl).at(-1).focus();
+        $$('.st-sec', stagesEl).at(-1).focus();
         changed();
       });
 

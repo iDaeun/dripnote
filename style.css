@@ -166,7 +166,7 @@ details summary { cursor: pointer; color: var(--accent); font-size: 14px; paddin
 .unit-input.small input { padding-right: 10px; }
 
 /* 레시피 차수 */
-.stage-head, .stage { display: grid; grid-template-columns: minmax(0, 1fr) 48px 44px 144px 20px; gap: 4px; align-items: center; }
+.stage-head, .stage { display: grid; grid-template-columns: minmax(0, 1fr) 44px 48px 144px 20px; gap: 4px; align-items: center; }
 .stage-head { font-size: 12px; color: var(--text-3); padding: 0 10px; margin-bottom: -6px; }
 .stage-head span:nth-child(n+2):nth-child(-n+4) { text-align: right; }
 #stages { display: flex; flex-direction: column; gap: 6px; }
@@ -180,9 +180,10 @@ details summary { cursor: pointer; color: var(--accent); font-size: 14px; paddin
 .st-cum { text-align: right; font-weight: 700; font-size: 19px; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.2px; }
 .st-del { width: 22px; height: 32px; display: flex; align-items: center; justify-content: center; color: var(--text-3); border-radius: 12px; }
 .st-del svg { width: 16px; height: 16px; }
-.st-memo { grid-column: 1 / -1; border: 0; background: transparent; padding: 0 0 0 2px; font-size: 13px; color: var(--text-2); }
-.st-memo:focus { outline: none; }
-.st-memo::placeholder { color: var(--text-3); opacity: .6; }
+.st-memo-line { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 20px; font-size: 13px; }
+.st-memo-text { color: var(--text-2); white-space: pre-wrap; }
+.st-memo-btn { font-size: 12px; color: var(--text-3); padding: 2px 8px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); flex: none; }
+.st-memo { flex: 1; font-size: 14px; padding: 6px 8px; }
 .stage.active { background: var(--accent-bg); border-color: var(--accent); }
 .stage.active .st-cum, .stage.active .st-name { color: var(--accent-text); }
 .stage.active .st-cum { font-size: 20px; }
