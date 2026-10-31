@@ -127,6 +127,8 @@ svg .filled, svg.filled { fill: currentColor; }
 .item.new { background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); color: var(--accent); font-weight: 600; }
 .item-main { flex: 1; min-width: 0; }
 .item-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.copy-btn { width: 36px; height: 36px; margin: -6px -6px -6px 0; color: var(--text-2); flex: none; }
+.copy-btn svg { width: 19px; height: 19px; }
 .item-title.big { font-size: 18px; white-space: normal; }
 .chev { width: 18px; height: 18px; color: var(--text-3); flex: none; }
 .thumb { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; flex: none; }

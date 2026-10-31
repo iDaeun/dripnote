@@ -20,6 +20,7 @@ const ICON = {
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="filled" d="M9 7l8 5-8 5z"/></svg>',
   bean: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="6.5" ry="9" transform="rotate(30 12 12)"/><path d="M9 4.5c3 3 3 12 6 15"/></svg>',
   edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h3l10-10-3-3L5 16z"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 011-1h9"/></svg>',
 };
 
 const app = document.getElementById('app');
@@ -538,11 +539,26 @@ async function viewBrew({ id }) {
 
 async function viewRecipes() {
   const recipes = (await db.all('recipes')).sort(byRecipe);
-  const list = recipes.map(r => `<a class="item" href="#/recipe/${r.id}"><div class="item-main"><div class="item-title">${esc(r.name)}${r.favorite ? `<span class="fav">${ICON.starFill}</span>` : ''}</div><div class="sub">${recipeSummary(r)}${r.links?.length ? ` · 링크 ${r.links.length}` : ''}</div>${recipeMemoLine(r)}</div>${ICON.chev}</a>`).join('');
+  const list = recipes.map(r => `<a class="item" href="#/recipe/${r.id}"><div class="item-main"><div class="item-title">${esc(r.name)}${r.favorite ? `<span class="fav">${ICON.starFill}</span>` : ''}</div><div class="sub">${recipeSummary(r)}${r.links?.length ? ` · 링크 ${r.links.length}` : ''}</div>${recipeMemoLine(r)}</div><button type="button" class="icon-btn copy-btn" data-copy="${r.id}" aria-label="레시피 복사">${ICON.copy}</button>${ICON.chev}</a>`).join('');
   return {
     html: `${bar('레시피')}<main class="page">
       ${recipes.length ? `<div class="list">${list}</div>` : `<div class="empty-state"><p>내 레시피를 만들어보세요</p><p class="sub">원두량과 차수별 물량을 넣으면 누적 g을 계산해줘요.</p><a class="btn primary" href="#/recipe/new">새 레시피</a></div>`}
     </main><a class="fab" href="#/recipe/new" aria-label="새 레시피">${ICON.plus}</a>`,
+    bind() {
+      // 복사본은 즐겨찾기를 빼고, 맨 위에 오도록 새로 만든 것으로 저장한다.
+      $$('[data-copy]').forEach(btn => btn.addEventListener('click', async e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const src = recipes.find(r => r.id === btn.dataset.copy);
+        if (!src) return;
+        const t = nowIso();
+        const copy = structuredClone(src);
+        Object.assign(copy, { id: uid(), name: `${src.name} (복사)`, favorite: false, createdAt: t, updatedAt: t });
+        copy.links = (copy.links || []).map(l => ({ ...l, id: uid() }));
+        await db.put('recipes', copy);
+        go(`#/recipe/${copy.id}`);
+      }));
+    },
   };
 }
 
