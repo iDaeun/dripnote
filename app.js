@@ -21,6 +21,7 @@ const ICON = {
   bean: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="6.5" ry="9" transform="rotate(30 12 12)"/><path d="M9 4.5c3 3 3 12 6 15"/></svg>',
   cup: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h11v5a5 5 0 01-5 5h-1a5 5 0 01-5-5z"/><path d="M16 10.5h1.5a2.5 2.5 0 010 5H15.5M8.5 3.5v2.5M12 3.5v2.5"/></svg>',
   pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0113 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>',
+  cloud: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5h10.5a4 4 0 00.6-8 6 6 0 00-11.6 1.5A3.3 3.3 0 007 18.5z"/><path d="M12 11v5M9.8 13.2L12 11l2.2 2.2"/></svg>',
   edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h3l10-10-3-3L5 16z"/></svg>',
   copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 011-1h9"/></svg>',
 };
@@ -135,8 +136,9 @@ function showPhoto(url) {
 
 // ---------- 공용 조각 ----------
 
+// 탭 첫 화면 오른쪽 위에는 백업 버튼을 둔다.
 function bar(title, { back = '', right = '' } = {}) {
-  if (!back) return `<header class="bar root"><h1>${title}</h1><div class="bar-right">${right}</div></header>`;
+  if (!back) return `<header class="bar root"><h1>${title}</h1><div class="bar-right">${right}<a class="icon-btn" href="#/backup" aria-label="백업">${ICON.cloud}</a></div></header>`;
   return `<header class="bar"><a class="icon-btn" href="${back}" aria-label="뒤로">${ICON.back}</a><h1>${title}</h1><div class="bar-right">${right}</div></header>`;
 }
 
@@ -377,8 +379,12 @@ async function viewRecords() {
        <p class="empty" id="none" hidden>조건에 맞는 기록이 없어요.</p>`
     : `<div class="empty-state"><p>첫 기록을 남겨보세요</p><p class="sub">레시피를 고르고, 그 레시피를 보면서 내린 뒤 감상을 남겨요.</p><a class="btn primary" href="#/pick-recipe">새 기록 시작</a></div>`;
 
+  const last = lastBackup();
+  const remind = brews.length && (!last || dayDiff(last.slice(0, 10), today()) >= BACKUP_REMIND_DAYS)
+    ? `<a class="notice" href="#/backup">${ICON.cloud}<span>${last ? `마지막 백업이 ${dayDiff(last.slice(0, 10), today())}일 전이에요.` : '아직 백업한 적이 없어요.'} iCloud Drive에 백업해두세요 ›</span></a>`
+    : '';
   return {
-    html: `${bar('기록')}<main class="page">${body}</main><a class="fab" href="#/pick-recipe" aria-label="새 기록">${ICON.plus}</a>`,
+    html: `${bar('기록')}<main class="page">${remind}${body}</main><a class="fab" href="#/pick-recipe" aria-label="새 기록">${ICON.plus}</a>`,
     bind() {
       if (!brews.length) return;
       let filter = 'all';
@@ -1208,6 +1214,153 @@ async function viewCafe({ id }) {
   };
 }
 
+// ---------- 백업 ----------
+
+// 모든 기록과 사진을 JSON 파일 하나에 담는다. 사진은 data URL 글자로 바꿔 넣는다.
+const BACKUP_STORES = ['beans', 'recipes', 'brews', 'cafes'];
+const LAST_BACKUP_KEY = 'dripnote.lastBackup';
+const BACKUP_REMIND_DAYS = 14;
+
+function lastBackup() {
+  try { return localStorage.getItem(LAST_BACKUP_KEY) || ''; } catch { return ''; }
+}
+
+const blobToDataUrl = blob => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result);
+  r.onerror = () => reject(r.error);
+  r.readAsDataURL(blob);
+});
+
+async function makeBackupFile() {
+  const data = {};
+  for (const store of BACKUP_STORES) data[store] = await db.all(store);
+  data.photos = await Promise.all((await db.all('photos')).map(async p => ({ id: p.id, owner: p.owner || '', data: await blobToDataUrl(p.blob) })));
+  const json = JSON.stringify({ app: 'dripnote', version: 1, exportedAt: nowIso(), data });
+  const d = new Date();
+  const stamp = `${today()}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+  return new File([json], `dripnote-${stamp}.json`, { type: 'application/json' });
+}
+
+// 같은 id가 이미 있으면 더 최근에 고친 쪽을 남긴다. 지운 기록은 되살아날 수 있다.
+async function restoreBackup(file) {
+  let parsed;
+  try { parsed = JSON.parse(await file.text()); } catch { throw new Error('드립노트 백업 파일이 아니에요.'); }
+  if (parsed?.app !== 'dripnote' || !parsed.data) throw new Error('드립노트 백업 파일이 아니에요.');
+  const stamp = x => x.updatedAt || x.createdAt || '';
+  const count = { added: 0, updated: 0, kept: 0 };
+  for (const store of BACKUP_STORES) {
+    const local = byId(await db.all(store));
+    for (const item of parsed.data[store] || []) {
+      const mine = local[item.id];
+      if (mine && stamp(mine) > stamp(item)) { count.kept++; continue; }
+      await db.put(store, item);
+      count[mine ? 'updated' : 'added']++;
+    }
+  }
+  const havePhotos = new Set((await db.all('photos')).map(p => p.id));
+  for (const p of parsed.data.photos || []) {
+    if (havePhotos.has(p.id)) continue;
+    const blob = await (await fetch(p.data)).blob();
+    await db.put('photos', { id: p.id, blob, owner: p.owner });
+  }
+  return count;
+}
+
+async function viewBackup() {
+  const counts = await Promise.all([...BACKUP_STORES, 'photos'].map(async st => (await db.all(st)).length));
+  const [beans, recipes, brews, cafes, photos] = counts;
+  const last = lastBackup();
+  const lastText = last ? `${fmtDate(last.slice(0, 10))} (${dayDiff(last.slice(0, 10), today())}일 전)` : '아직 없어요';
+
+  return {
+    html: `${bar('백업', { back: '#/records' })}
+    <main class="page">
+      <div class="box">
+        <div class="bk-stats">${[['원두', beans], ['레시피', recipes], ['기록', brews], ['카페', cafes], ['사진', photos]].map(([k, v]) => `<div><strong>${v}</strong><span>${k}</span></div>`).join('')}</div>
+        <div class="row"><span class="label">마지막 백업</span><span>${lastText}</span></div>
+      </div>
+      <h2 class="sec-title">내보내기</h2>
+      <p class="sub">모든 기록과 사진을 파일 하나로 만들어요. 공유 화면에서 <b>파일에 저장 → iCloud Drive</b>를 고르면 다른 애플 기기에서도 열 수 있어요.</p>
+      <button class="btn primary block" id="make">백업 파일 만들기</button>
+      <div id="ready" hidden>
+        <p class="sub" id="readyText"></p>
+        <button class="btn primary block" id="share">iCloud Drive에 저장하기</button>
+      </div>
+      <h2 class="sec-title">가져오기</h2>
+      <p class="sub">다른 기기에서 만든 백업 파일을 골라요. 이 기기의 기록에 합쳐지고, 같은 기록은 더 최근에 고친 쪽이 남아요. 지우는 것은 없어요.</p>
+      <button class="btn block" id="pick">백업 파일 가져오기</button>
+      <input type="file" id="restoreFile" accept="application/json,.json" hidden>
+      <p class="err" id="err" hidden></p>
+      <p class="sub" id="done" hidden></p>
+    </main>`,
+    bind() {
+      let file;
+      const showErr = msg => { $('#err').textContent = msg; $('#err').hidden = false; };
+      const markSaved = () => { try { localStorage.setItem(LAST_BACKUP_KEY, today()); } catch {} };
+
+      // 사파리는 탭한 직후에만 공유 화면을 열어줘서, 파일을 먼저 만들고 한 번 더 탭하게 한다.
+      $('#make').addEventListener('click', async e => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = '만드는 중…';
+        $('#err').hidden = true;
+        try {
+          file = await makeBackupFile();
+          $('#readyText').textContent = `${file.name} · ${(file.size / 1048576).toFixed(1)}MB`;
+          $('#ready').hidden = false;
+          btn.hidden = true;
+        } catch (ex) {
+          showErr(`백업 파일을 만들지 못했어요: ${ex.message}`);
+          btn.disabled = false;
+          btn.textContent = '백업 파일 만들기';
+        }
+      });
+      $('#share').addEventListener('click', async () => {
+        if (navigator.canShare?.({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file] });
+            markSaved();
+            $('#done').textContent = '저장했어요.';
+            $('#done').hidden = false;
+          } catch (ex) {
+            if (ex.name !== 'AbortError') showErr(`저장하지 못했어요: ${ex.message}`);
+          }
+          return;
+        }
+        // 공유 화면이 없는 브라우저(맥 등)에서는 내려받기로 저장한다.
+        const a = document.createElement('a');
+        a.href = objUrl(file);
+        a.download = file.name;
+        a.click();
+        markSaved();
+        $('#done').textContent = '내려받았어요. iCloud Drive 폴더로 옮겨두세요.';
+        $('#done').hidden = false;
+      });
+
+      $('#pick').addEventListener('click', () => $('#restoreFile').click());
+      $('#restoreFile').addEventListener('change', async e => {
+        const f = e.target.files[0];
+        e.target.value = '';
+        if (!f) return;
+        $('#err').hidden = true;
+        $('#done').hidden = true;
+        $('#pick').disabled = true;
+        $('#pick').textContent = '가져오는 중…';
+        try {
+          const c = await restoreBackup(f);
+          $('#done').textContent = `가져왔어요. 새로 ${c.added}개, 바뀐 것 ${c.updated}개${c.kept ? `, 이 기기 쪽이 더 최근이라 그대로 둔 것 ${c.kept}개` : ''}.`;
+          $('#done').hidden = false;
+        } catch (ex) {
+          showErr(ex.message);
+        }
+        $('#pick').disabled = false;
+        $('#pick').textContent = '백업 파일 가져오기';
+      });
+    },
+  };
+}
+
 // ---------- 라우터 ----------
 
 const VIEWS = {
@@ -1224,6 +1377,7 @@ const VIEWS = {
   cafes: viewCafes,
   cafe: viewCafe,
   'cafe-edit': viewCafeForm,
+  backup: viewBackup,
 };
 const TAB_OF = { recipes: 'recipes', recipe: 'recipes', beans: 'beans', bean: 'beans', 'bean-edit': 'beans', cafes: 'cafes', cafe: 'cafes', 'cafe-edit': 'cafes' };
 
