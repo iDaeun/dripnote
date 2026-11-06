@@ -22,6 +22,7 @@ const ICON = {
   cup: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h11v5a5 5 0 01-5 5h-1a5 5 0 01-5-5z"/><path d="M16 10.5h1.5a2.5 2.5 0 010 5H15.5M8.5 3.5v2.5M12 3.5v2.5"/></svg>',
   pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0113 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>',
   cloud: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5h10.5a4 4 0 00.6-8 6 6 0 00-11.6 1.5A3.3 3.3 0 007 18.5z"/><path d="M12 11v5M9.8 13.2L12 11l2.2 2.2"/></svg>',
+  note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14 3.5V8.5h5M9 12.5h7M9 16h5"/></svg>',
   edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h3l10-10-3-3L5 16z"/></svg>',
   copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 011-1h9"/></svg>',
 };
@@ -1214,10 +1215,112 @@ async function viewCafe({ id }) {
   };
 }
 
+// ---------- 메모 탭 ----------
+
+const byEdited = (a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || '');
+const isoDate = iso => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+async function viewNotes() {
+  const notes = (await db.all('notes')).sort(byEdited);
+  const items = await Promise.all(notes.map(async n => {
+    const thumb = n.photoIds?.[0] ? await photoUrl(n.photoIds[0]) : '';
+    const search = [n.title, n.body].join(' ').toLowerCase();
+    return `<a class="item" href="#/note/${n.id}" data-search="${esc(search)}">
+      <div class="item-main">
+        <div class="item-title">${esc(n.title || '제목 없음')}</div>
+        <div class="sub">${shortDate(isoDate(n.updatedAt || n.createdAt))}${n.body ? ` · ${esc(n.body.split('\n')[0])}` : ''}</div>
+      </div>${thumb ? `<img class="thumb" src="${thumb}" alt="">` : ''}</a>`;
+  }));
+
+  const body = notes.length
+    ? `<div class="toolbar"><input type="search" id="q" placeholder="제목, 내용 검색" aria-label="메모 검색"></div>
+       <div class="list" id="list">${items.join('')}</div>
+       <p class="empty" id="none" hidden>조건에 맞는 메모가 없어요.</p>`
+    : `<div class="empty-state"><p>커피에 관한 무엇이든 적어두세요</p><p class="sub">배운 것, 사고 싶은 도구, 가보고 싶은 카페.</p><a class="btn primary" href="#/note-edit/new">새 메모</a></div>`;
+
+  return {
+    html: `${bar('메모')}<main class="page">${body}</main><a class="fab" href="#/note-edit/new" aria-label="새 메모">${ICON.plus}</a>`,
+    bind() {
+      if (!notes.length) return;
+      $('#q').addEventListener('input', () => {
+        const term = $('#q').value.trim().toLowerCase();
+        let shown = 0;
+        $$('#list .item').forEach(el => {
+          el.hidden = !!term && !el.dataset.search.includes(term);
+          if (!el.hidden) shown++;
+        });
+        $('#none').hidden = shown > 0;
+      });
+    },
+  };
+}
+
+async function viewNoteForm({ id }) {
+  const editing = id && id !== 'new';
+  let n;
+  if (editing) {
+    n = await db.get('notes', id);
+    if (!n) return notFound('#/notes');
+    n = structuredClone(n);
+  } else {
+    n = { id: uid(), title: '', body: '', photoIds: [], createdAt: nowIso() };
+  }
+  const photos = await loadPhotos(n.photoIds);
+  const removed = [];
+
+  return {
+    html: `${bar(editing ? '메모 수정' : '새 메모', { back: editing ? `#/note/${n.id}` : '#/notes', right: '<button class="text-btn" id="save">완료</button>' })}
+    <main class="page form">
+      <label class="field"><span>제목</span><input id="title" value="${esc(n.title)}" placeholder="제목"></label>
+      <label class="field"><span>메모</span><textarea id="body" rows="10" placeholder="자유롭게 적어요">${esc(n.body)}</textarea></label>
+      ${photoField()}
+    </main>`,
+    bind() {
+      bindPhotoEditor(photos, removed);
+      $('#save').addEventListener('click', async e => {
+        e.target.disabled = true;
+        n.title = $('#title').value.trim();
+        n.body = $('#body').value.trim();
+        n.photoIds = await savePhotos(photos, removed, n.id);
+        n.updatedAt = nowIso();
+        await db.put('notes', n);
+        location.replace(`#/note/${n.id}`);
+      });
+    },
+  };
+}
+
+async function viewNote({ id }) {
+  const n = await db.get('notes', id);
+  if (!n) return notFound('#/notes');
+  const photos = (await Promise.all((n.photoIds || []).map(photoUrl))).filter(Boolean);
+  const edited = isoDate(n.updatedAt || n.createdAt);
+
+  return {
+    html: `${bar('메모', { back: '#/notes', right: `<a class="icon-btn" href="#/note-edit/${n.id}" aria-label="수정">${ICON.edit}</a>` })}
+    <main class="page">
+      <h2 class="note-title">${esc(n.title || '제목 없음')}</h2>
+      <p class="sub">${fmtDate(edited)} 수정</p>
+      ${n.body ? `<p class="memo">${esc(n.body)}</p>` : ''}
+      ${photos.length ? `<div class="photos view">${photos.map(u => `<img src="${u}" alt="">`).join('')}</div>` : ''}
+      <button class="btn danger-text block" id="del">메모 삭제</button>
+    </main>`,
+    bind() {
+      $('#del').addEventListener('click', async () => {
+        if (!confirm('이 메모를 삭제할까요? 사진도 함께 삭제돼요.')) return;
+        for (const pid of n.photoIds || []) await db.del('photos', pid);
+        await db.del('notes', n.id);
+        location.replace('#/notes');
+      });
+      $$('.photos.view img').forEach(img => img.addEventListener('click', () => showPhoto(img.src)));
+    },
+  };
+}
+
 // ---------- 백업 ----------
 
 // 모든 기록과 사진을 JSON 파일 하나에 담는다. 사진은 data URL 글자로 바꿔 넣는다.
-const BACKUP_STORES = ['beans', 'recipes', 'brews', 'cafes'];
+const BACKUP_STORES = ['beans', 'recipes', 'brews', 'cafes', 'notes'];
 const LAST_BACKUP_KEY = 'dripnote.lastBackup';
 const BACKUP_REMIND_DAYS = 14;
 
@@ -1269,7 +1372,7 @@ async function restoreBackup(file) {
 
 async function viewBackup() {
   const counts = await Promise.all([...BACKUP_STORES, 'photos'].map(async st => (await db.all(st)).length));
-  const [beans, recipes, brews, cafes, photos] = counts;
+  const [beans, recipes, brews, cafes, notes, photos] = counts;
   const last = lastBackup();
   const lastText = last ? `${fmtDate(last.slice(0, 10))} (${dayDiff(last.slice(0, 10), today())}일 전)` : '아직 없어요';
 
@@ -1277,7 +1380,7 @@ async function viewBackup() {
     html: `${bar('백업', { back: '#/records' })}
     <main class="page">
       <div class="box">
-        <div class="bk-stats">${[['원두', beans], ['레시피', recipes], ['기록', brews], ['카페', cafes], ['사진', photos]].map(([k, v]) => `<div><strong>${v}</strong><span>${k}</span></div>`).join('')}</div>
+        <div class="bk-stats">${[['원두', beans], ['레시피', recipes], ['기록', brews], ['카페', cafes], ['메모', notes], ['사진', photos]].map(([k, v]) => `<div><strong>${v}</strong><span>${k}</span></div>`).join('')}</div>
         <div class="row"><span class="label">마지막 백업</span><span>${lastText}</span></div>
       </div>
       <h2 class="sec-title">내보내기</h2>
@@ -1377,9 +1480,12 @@ const VIEWS = {
   cafes: viewCafes,
   cafe: viewCafe,
   'cafe-edit': viewCafeForm,
+  notes: viewNotes,
+  note: viewNote,
+  'note-edit': viewNoteForm,
   backup: viewBackup,
 };
-const TAB_OF = { recipes: 'recipes', recipe: 'recipes', beans: 'beans', bean: 'beans', 'bean-edit': 'beans', cafes: 'cafes', cafe: 'cafes', 'cafe-edit': 'cafes' };
+const TAB_OF = { recipes: 'recipes', recipe: 'recipes', beans: 'beans', bean: 'beans', 'bean-edit': 'beans', cafes: 'cafes', cafe: 'cafes', 'cafe-edit': 'cafes', notes: 'notes', note: 'notes', 'note-edit': 'notes' };
 
 function parseHash() {
   const [path, query = ''] = (location.hash.slice(1) || '/records').split('?');

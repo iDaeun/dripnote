@@ -1,3 +1,7 @@
+/* 프리젠테이션(Freesentation) 글꼴, SIL OFL 1.1 — fonts/OFL.txt */
+@font-face { font-family: "Freesentation"; src: url("fonts/Freesentation-4Regular.woff2") format("woff2"); font-weight: 100 500; font-display: swap; }
+@font-face { font-family: "Freesentation"; src: url("fonts/Freesentation-7Bold.woff2") format("woff2"); font-weight: 600 900; font-display: swap; }
+
 :root {
   --bg: #faf8f5;
   --surface: #ffffff;
@@ -39,7 +43,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", system-ui, sans-serif;
+  font: 16px/1.5 "Freesentation", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", system-ui, sans-serif;
   padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
 }
 a { color: inherit; text-decoration: none; }
@@ -79,9 +83,10 @@ svg .filled, svg.filled { fill: currentColor; }
 .fav svg { width: 15px; height: 15px; margin-left: 4px; vertical-align: -2px; }
 .text-btn { color: var(--accent); font-weight: 600; padding: 10px 12px; }
 .text-btn:disabled { opacity: .4; }
-.bk-stats { display: grid; grid-template-columns: repeat(5, 1fr); text-align: center; padding: 4px 0 10px; border-bottom: 1px solid var(--border); }
+.bk-stats { display: grid; grid-template-columns: repeat(6, 1fr); text-align: center; padding: 4px 0 10px; border-bottom: 1px solid var(--border); }
 .bk-stats strong { display: block; font-size: 20px; }
 .bk-stats span { font-size: 12px; color: var(--text-3); }
+.note-title { margin: 4px 0 0; font-size: 22px; line-height: 1.35; word-break: break-word; }
 .notice { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius); background: var(--accent-bg); color: var(--accent-text); font-size: 14px; }
 .notice svg { flex: none; }
 .title-input { border: 0; background: transparent; text-align: center; font-weight: 600; font-size: 17px; padding: 8px 4px; }
