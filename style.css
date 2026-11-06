@@ -224,6 +224,10 @@ details summary { cursor: pointer; color: var(--accent); font-size: 14px; paddin
 .stars { position: relative; display: inline-block; font-size: 30px; line-height: 1; letter-spacing: 2px; cursor: pointer; }
 .stars .s-bg { color: var(--border); }
 .stars .s-fg { position: absolute; left: 0; top: 0; overflow: hidden; white-space: nowrap; color: var(--star); }
+.place-card { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-top: 8px; }
+.pl-pin { width: 40px; height: 40px; border-radius: 10px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text-2); }
+.pl-pin.naver { background: #03c75a; color: #fff; }
+.pl-open { font-size: 13px; color: #03a94d; font-weight: 600; margin-top: 2px; }
 .rating-input, .rating-view { display: flex; align-items: center; gap: 12px; }
 .rating-view .stars { cursor: default; font-size: 24px; }
 .rating-num { font-size: 14px; color: var(--text-2); }

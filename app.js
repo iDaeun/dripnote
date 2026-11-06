@@ -19,6 +19,8 @@ const ICON = {
   link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg>',
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="filled" d="M9 7l8 5-8 5z"/></svg>',
   bean: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="6.5" ry="9" transform="rotate(30 12 12)"/><path d="M9 4.5c3 3 3 12 6 15"/></svg>',
+  cup: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h11v5a5 5 0 01-5 5h-1a5 5 0 01-5-5z"/><path d="M16 10.5h1.5a2.5 2.5 0 010 5H15.5M8.5 3.5v2.5M12 3.5v2.5"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0113 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>',
   edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h3l10-10-3-3L5 16z"/></svg>',
   copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 011-1h9"/></svg>',
 };
@@ -227,6 +229,128 @@ function newRecipe() {
   };
 }
 
+// ---------- 맛·사진 입력 (기록과 카페 기록이 같이 쓴다) ----------
+
+const flavorField = label => `<div class="field"><span>${label}</span><div id="fpicked"></div><div class="fpicker" id="fpicker"></div></div>`;
+
+// 플레이버 휠을 한 단계씩 내려가며 고른다. 고른 맛은 item.flavors에 담긴다.
+function bindFlavorPicker(item) {
+  let flavorPath = [];
+  const renderFlavors = () => {
+    $('#fpicked').innerHTML = item.flavors.length
+      ? `${colorBand(item.flavors)}<div class="pills wrap">${item.flavors.map(n => flavorChip(n, { removable: true })).join('')}</div>`
+      : '<p class="sub">아래에서 느낀 맛을 골라요. 큰 분류만 골라도 돼요.</p>';
+    const current = flavorPath.at(-1);
+    const options = current ? current.children : FLAVOR_TREE;
+    $('#fpicker').innerHTML = `
+      <div class="fcrumbs"><button type="button" data-crumb="-1">전체</button>${flavorPath.map((n, i) => ` › <button type="button" data-crumb="${i}">${esc(n.name)}</button>`).join('')}</div>
+      <div class="fopts">
+        ${current ? `<button type="button" class="fopt group ${item.flavors.includes(current.name) ? 'on' : ''}" style="--c:${current.color}" data-pick="${esc(current.name)}"><i></i>${esc(current.name)} (으)로 고르기</button>` : ''}
+        ${options.map(n => `<button type="button" class="fopt ${item.flavors.includes(n.name) ? 'on' : ''}" style="--c:${n.color}" data-node="${esc(n.name)}"><i></i>${esc(n.name)}<small>${esc(n.en)}</small>${n.children.length ? ' ›' : ''}</button>`).join('')}
+      </div>`;
+  };
+  const togglePick = name => {
+    item.flavors = item.flavors.includes(name) ? item.flavors.filter(x => x !== name) : [...item.flavors, name];
+    renderFlavors();
+  };
+  renderFlavors();
+
+  $('#fpicked').addEventListener('click', e => {
+    const btn = e.target.closest('[data-unpick]');
+    if (btn) togglePick(btn.dataset.unpick);
+  });
+  $('#fpicker').addEventListener('click', e => {
+    const crumb = e.target.closest('[data-crumb]');
+    if (crumb) { flavorPath = flavorPath.slice(0, +crumb.dataset.crumb + 1); return renderFlavors(); }
+    const pick = e.target.closest('[data-pick]');
+    if (pick) return togglePick(pick.dataset.pick);
+    const opt = e.target.closest('[data-node]');
+    if (!opt) return;
+    const node = flavorOf(opt.dataset.node);
+    if (node.children.length) { flavorPath = node.path.map(flavorOf); renderFlavors(); }
+    else togglePick(node.name);
+  });
+}
+
+const photoField = () => `<div class="field"><span>사진 (최대 ${MAX_PHOTOS}장, 첫 장이 대표)</span><div class="photos" id="photos"></div><input type="file" id="file" accept="image/*" multiple hidden></div>
+      <p class="err" id="err" hidden></p>`;
+
+// 별을 탭한 위치로 0.5점 단위 별점을 고른다. 같은 점수를 다시 누르면 지운다.
+function bindRating(item) {
+  const render = () => {
+    $('#rating').innerHTML = `${starsHtml(item.rating)}<span class="rating-num">${item.rating ? item.rating.toFixed(1) : '탭해서 선택'}</span>`;
+  };
+  render();
+  $('#rating').addEventListener('click', e => {
+    const stars = e.target.closest('.stars');
+    if (!stars) return;
+    const rect = stars.getBoundingClientRect();
+    const value = Math.min(5, Math.max(0.5, Math.ceil(((e.clientX - rect.left) / rect.width) * 10) / 2));
+    item.rating = value === item.rating ? 0 : value;
+    render();
+  });
+}
+
+async function loadPhotos(ids) {
+  return (await Promise.all((ids || []).map(async pid => {
+    const p = await db.get('photos', pid);
+    return p ? { id: pid, blob: p.blob, url: objUrl(p.blob), isNew: false } : null;
+  }))).filter(Boolean);
+}
+
+// photos는 화면에 보이는 사진, removed는 지운 기존 사진. 저장은 savePhotos가 한다.
+function bindPhotoEditor(photos, removed) {
+  const renderPhotos = () => {
+    $('#photos').innerHTML = photos.map((p, i) => `<div class="ph-item">
+      <img src="${p.url}" alt="">
+      <button type="button" class="ph-del" data-del="${i}" aria-label="사진 삭제">${ICON.x}</button>
+      ${i === 0 ? '<span class="ph-badge">대표</span>' : `<button type="button" class="ph-badge ghost" data-first="${i}">대표로</button>`}
+    </div>`).join('') + (photos.length < MAX_PHOTOS ? `<button type="button" class="ph-add" id="phAdd" aria-label="사진 추가">${ICON.camera}</button>` : '');
+  };
+  renderPhotos();
+
+  $('#photos').addEventListener('click', e => {
+    if (e.target.closest('#phAdd')) return $('#file').click();
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      const [p] = photos.splice(+del.dataset.del, 1);
+      if (!p.isNew) removed.push(p);
+      return renderPhotos();
+    }
+    const first = e.target.closest('[data-first]');
+    if (first) {
+      const [p] = photos.splice(+first.dataset.first, 1);
+      photos.unshift(p);
+      return renderPhotos();
+    }
+    const img = e.target.closest('img');
+    if (img) showPhoto(img.src);
+  });
+  $('#file').addEventListener('change', async e => {
+    const files = [...e.target.files].slice(0, MAX_PHOTOS - photos.length);
+    e.target.value = '';
+    const err = $('#err');
+    err.hidden = true;
+    if (files.length) $('#photos').insertAdjacentHTML('beforeend', '<span class="sub">사진 처리 중…</span>');
+    for (const f of files) {
+      try {
+        const blob = await resizeImage(f);
+        photos.push({ id: uid(), blob, url: objUrl(blob), isNew: true });
+      } catch (ex) {
+        err.textContent = ex.message;
+        err.hidden = false;
+      }
+    }
+    renderPhotos();
+  });
+}
+
+async function savePhotos(photos, removed, owner) {
+  for (const p of photos) if (p.isNew) await db.put('photos', { id: p.id, blob: p.blob, owner });
+  for (const p of removed) await db.del('photos', p.id);
+  return photos.map(p => p.id);
+}
+
 // ---------- 기록 탭 ----------
 
 async function viewRecords() {
@@ -325,16 +449,12 @@ async function viewBrewForm({ name, id, q }) {
   }
   const beanThumbs = {};
   for (const bean of beans) if (bean.photoId) beanThumbs[bean.id] = await photoUrl(bean.photoId);
-  const photos = (await Promise.all((b.photoIds || []).map(async pid => {
-    const p = await db.get('photos', pid);
-    return p ? { id: pid, blob: p.blob, url: objUrl(p.blob), isNew: false } : null;
-  }))).filter(Boolean);
+  const photos = await loadPhotos(b.photoIds);
   const removed = [];
   const back = editing ? `#/brew/${b.id}` : (b.recipeId ? `#/recipe/${b.recipeId}` : '#/records');
   const selectable = beans.filter(x => !x.finished || x.id === b.beanId);
   b.flavors = [...new Set((b.flavors || []).map(canonicalFlavor))];
   b.tags = b.tags || [];
-  let flavorPath = [];
 
   return {
     html: `${bar(editing ? '기록 수정' : '기록 남기기', { back, right: '<button class="text-btn" id="save">완료</button>' })}
@@ -348,72 +468,23 @@ async function viewBrewForm({ name, id, q }) {
       </div>
       <label class="field"><span>드리퍼</span><input id="dripper" value="${esc(b.dripper)}" placeholder="V60, 칼리타 웨이브"></label>
       <div class="field"><span>별점</span><div class="rating-input" id="rating"></div></div>
-      <div class="field"><span>느낀 맛 (색으로 기억해요)</span><div id="fpicked"></div><div class="fpicker" id="fpicker"></div></div>
+      ${flavorField('느낀 맛 (색으로 기억해요)')}
       <div class="field"><span>추출 느낌</span><div class="pills wrap" id="tags">${TASTE_TAGS.map(t => `<button type="button" class="pill ${b.tags.includes(t) ? 'on' : ''}" data-t="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>
       <label class="field"><span>메모</span><textarea id="memo" rows="4" placeholder="맛, 향, 다음에 바꿔볼 점">${esc(b.memo)}</textarea></label>
-      <div class="field"><span>사진 (최대 ${MAX_PHOTOS}장, 첫 장이 대표)</span><div class="photos" id="photos"></div><input type="file" id="file" accept="image/*" multiple hidden></div>
-      <p class="err" id="err" hidden></p>
+      ${photoField()}
     </main>`,
     bind() {
       const renderBean = () => {
         const bean = beans.find(x => x.id === b.beanId);
         $('#beanCard').innerHTML = beanCardHtml(bean, b.date, beanThumbs[b.beanId], false);
       };
-      const renderRating = () => {
-        $('#rating').innerHTML = `${starsHtml(b.rating)}<span class="rating-num">${b.rating ? b.rating.toFixed(1) : '탭해서 선택'}</span>`;
-      };
-      const renderPhotos = () => {
-        $('#photos').innerHTML = photos.map((p, i) => `<div class="ph-item">
-          <img src="${p.url}" alt="">
-          <button type="button" class="ph-del" data-del="${i}" aria-label="사진 삭제">${ICON.x}</button>
-          ${i === 0 ? '<span class="ph-badge">대표</span>' : `<button type="button" class="ph-badge ghost" data-first="${i}">대표로</button>`}
-        </div>`).join('') + (photos.length < MAX_PHOTOS ? `<button type="button" class="ph-add" id="phAdd" aria-label="사진 추가">${ICON.camera}</button>` : '');
-      };
-      const renderFlavors = () => {
-        $('#fpicked').innerHTML = b.flavors.length
-          ? `${colorBand(b.flavors)}<div class="pills wrap">${b.flavors.map(n => flavorChip(n, { removable: true })).join('')}</div>`
-          : '<p class="sub">아래에서 느낀 맛을 골라요. 큰 분류만 골라도 돼요.</p>';
-        const current = flavorPath.at(-1);
-        const options = current ? current.children : FLAVOR_TREE;
-        $('#fpicker').innerHTML = `
-          <div class="fcrumbs"><button type="button" data-crumb="-1">전체</button>${flavorPath.map((n, i) => ` › <button type="button" data-crumb="${i}">${esc(n.name)}</button>`).join('')}</div>
-          <div class="fopts">
-            ${current ? `<button type="button" class="fopt group ${b.flavors.includes(current.name) ? 'on' : ''}" style="--c:${current.color}" data-pick="${esc(current.name)}"><i></i>${esc(current.name)} (으)로 고르기</button>` : ''}
-            ${options.map(n => `<button type="button" class="fopt ${b.flavors.includes(n.name) ? 'on' : ''}" style="--c:${n.color}" data-node="${esc(n.name)}"><i></i>${esc(n.name)}<small>${esc(n.en)}</small>${n.children.length ? ' ›' : ''}</button>`).join('')}
-          </div>`;
-      };
-      const togglePick = name => {
-        b.flavors = b.flavors.includes(name) ? b.flavors.filter(x => x !== name) : [...b.flavors, name];
-        renderFlavors();
-      };
-      renderBean(); renderRating(); renderPhotos(); renderFlavors();
-
-      $('#fpicked').addEventListener('click', e => {
-        const btn = e.target.closest('[data-unpick]');
-        if (btn) togglePick(btn.dataset.unpick);
-      });
-      $('#fpicker').addEventListener('click', e => {
-        const crumb = e.target.closest('[data-crumb]');
-        if (crumb) { flavorPath = flavorPath.slice(0, +crumb.dataset.crumb + 1); return renderFlavors(); }
-        const pick = e.target.closest('[data-pick]');
-        if (pick) return togglePick(pick.dataset.pick);
-        const opt = e.target.closest('[data-node]');
-        if (!opt) return;
-        const node = flavorOf(opt.dataset.node);
-        if (node.children.length) { flavorPath = node.path.map(flavorOf); renderFlavors(); }
-        else togglePick(node.name);
-      });
+      renderBean();
+      bindRating(b);
+      bindFlavorPicker(b);
+      bindPhotoEditor(photos, removed);
 
       $('#date').addEventListener('change', e => { b.date = e.target.value || today(); renderBean(); });
       $('#bean').addEventListener('change', e => { b.beanId = e.target.value; renderBean(); });
-      $('#rating').addEventListener('click', e => {
-        const stars = e.target.closest('.stars');
-        if (!stars) return;
-        const rect = stars.getBoundingClientRect();
-        const value = Math.min(5, Math.max(0.5, Math.ceil(((e.clientX - rect.left) / rect.width) * 10) / 2));
-        b.rating = value === b.rating ? 0 : value;
-        renderRating();
-      });
       $('#tags').addEventListener('click', e => {
         const btn = e.target.closest('[data-t]');
         if (!btn) return;
@@ -421,48 +492,12 @@ async function viewBrewForm({ name, id, q }) {
         b.tags = b.tags.includes(t) ? b.tags.filter(x => x !== t) : [...b.tags, t];
         btn.classList.toggle('on');
       });
-      $('#photos').addEventListener('click', e => {
-        if (e.target.closest('#phAdd')) return $('#file').click();
-        const del = e.target.closest('[data-del]');
-        if (del) {
-          const [p] = photos.splice(+del.dataset.del, 1);
-          if (!p.isNew) removed.push(p);
-          return renderPhotos();
-        }
-        const first = e.target.closest('[data-first]');
-        if (first) {
-          const [p] = photos.splice(+first.dataset.first, 1);
-          photos.unshift(p);
-          return renderPhotos();
-        }
-        const img = e.target.closest('img');
-        if (img) showPhoto(img.src);
-      });
-      $('#file').addEventListener('change', async e => {
-        const files = [...e.target.files].slice(0, MAX_PHOTOS - photos.length);
-        e.target.value = '';
-        const err = $('#err');
-        err.hidden = true;
-        if (files.length) $('#photos').insertAdjacentHTML('beforeend', '<span class="sub">사진 처리 중…</span>');
-        for (const f of files) {
-          try {
-            const blob = await resizeImage(f);
-            photos.push({ id: uid(), blob, url: objUrl(blob), isNew: true });
-          } catch (ex) {
-            err.textContent = ex.message;
-            err.hidden = false;
-          }
-        }
-        renderPhotos();
-      });
       $('#save').addEventListener('click', async e => {
         e.target.disabled = true;
         b.date = $('#date').value || today();
         b.dripper = $('#dripper').value.trim();
         b.memo = $('#memo').value.trim();
-        for (const p of photos) if (p.isNew) await db.put('photos', { id: p.id, blob: p.blob, owner: b.id });
-        for (const p of removed) await db.del('photos', p.id);
-        b.photoIds = photos.map(p => p.id);
+        b.photoIds = await savePhotos(photos, removed, b.id);
         b.updatedAt = nowIso();
         await db.put('brews', b);
         location.replace(`#/brew/${b.id}`);
@@ -1012,6 +1047,167 @@ async function viewBeanEdit({ id, q }) {
   };
 }
 
+// ---------- 카페 탭 ----------
+
+// 네이버 지도 '공유 → 복사'로 붙여넣은 글에서 가게 이름·주소·링크를 뽑는다.
+// 예: "[네이버 지도]\n블루보틀 성수\n서울 성동구 아차산로 7\nhttps://naver.me/xxxx"
+function parsePlace(text) {
+  const url = String(text).match(/https?:\/\/\S+/)?.[0] || '';
+  const lines = String(text).replace(url, '').split('\n').map(l => l.trim())
+    .filter(l => l && !/^\[?\s*네이버\s*지도\s*\]?$/.test(l));
+  return url || lines.length ? { url, name: lines[0] || '', address: lines[1] || '' } : null;
+}
+
+const placeText = p => (p ? [p.name, p.address, p.url].filter(Boolean).join('\n') : '');
+
+function placeCardHtml(place, fallbackName) {
+  if (!place) return '';
+  const naver = /naver\.(me|com)/.test(place.url);
+  const body = `<span class="pl-pin${naver ? ' naver' : ''}">${ICON.pin}</span><span class="lk-text"><span class="lk-title">${esc(place.name || fallbackName || '위치')}</span>${place.address ? `<span class="sub">${esc(place.address)}</span>` : ''}${place.url ? `<span class="pl-open">${naver ? '네이버 지도에서 보기' : esc(host(place.url))} ›</span>` : ''}</span>`;
+  return place.url ? `<a class="place-card" href="${esc(place.url)}" target="_blank" rel="noopener">${body}</a>` : `<div class="place-card">${body}</div>`;
+}
+
+const cafeMeta = c => [c.menu, c.beanName, c.roast].filter(Boolean).join(' · ');
+
+async function viewCafes() {
+  const visits = (await db.all('cafes')).sort(byNewest);
+  const items = await Promise.all(visits.map(async c => {
+    const thumb = c.photoIds?.[0] ? await photoUrl(c.photoIds[0]) : '';
+    const search = [c.cafeName, c.place?.name, c.place?.address, c.menu, c.beanName, c.memo, ...(c.flavors || [])].join(' ').toLowerCase();
+    return `<a class="item" href="#/cafe/${c.id}" data-search="${esc(search)}">
+      ${thumb ? `<img class="thumb" src="${thumb}" alt="">` : `<div class="thumb ph">${ICON.cup}</div>`}
+      <div class="item-main">
+        <div class="item-title">${esc(c.cafeName || '이름 없는 카페')}</div>
+        <div class="sub">${shortDate(c.date)}${cafeMeta(c) ? ` · ${esc(cafeMeta(c))}` : ''} · ${c.rating ? `${c.rating.toFixed(1)}점` : '별점 없음'}</div>
+        ${colorBand(c.flavors || [])}
+      </div></a>`;
+  }));
+
+  const body = visits.length
+    ? `<div class="toolbar"><input type="search" id="q" placeholder="카페, 원두, 맛, 메모 검색" aria-label="카페 기록 검색"></div>
+       <div class="list" id="list">${items.join('')}</div>
+       <p class="empty" id="none" hidden>조건에 맞는 기록이 없어요.</p>`
+    : `<div class="empty-state"><p>카페에서 마신 커피를 남겨보세요</p><p class="sub">원두와 맛을 색으로 기억하고, 네이버 지도 위치도 붙여둘 수 있어요.</p><a class="btn primary" href="#/cafe-edit/new">카페 기록 남기기</a></div>`;
+
+  return {
+    html: `${bar('카페')}<main class="page">${body}</main><a class="fab" href="#/cafe-edit/new" aria-label="새 카페 기록">${ICON.plus}</a>`,
+    bind() {
+      if (!visits.length) return;
+      $('#q').addEventListener('input', () => {
+        const term = $('#q').value.trim().toLowerCase();
+        let shown = 0;
+        $$('#list .item').forEach(el => {
+          el.hidden = !!term && !el.dataset.search.includes(term);
+          if (!el.hidden) shown++;
+        });
+        $('#none').hidden = shown > 0;
+      });
+    },
+  };
+}
+
+async function viewCafeForm({ id }) {
+  const editing = id && id !== 'new';
+  let c;
+  if (editing) {
+    c = await db.get('cafes', id);
+    if (!c) return notFound('#/cafes');
+    c = structuredClone(c);
+  } else {
+    c = { id: uid(), date: today(), cafeName: '', place: null, menu: '', beanName: '', roast: '', rating: 0, flavors: [], memo: '', photoIds: [], createdAt: nowIso() };
+  }
+  c.flavors = [...new Set((c.flavors || []).map(canonicalFlavor))];
+  const photos = await loadPhotos(c.photoIds);
+  const removed = [];
+  const back = editing ? `#/cafe/${c.id}` : '#/cafes';
+
+  return {
+    html: `${bar(editing ? '카페 기록 수정' : '카페 기록', { back, right: '<button class="text-btn" id="save">완료</button>' })}
+    <main class="page form">
+      <label class="field inline"><span>날짜</span><input type="date" id="date" value="${esc(c.date)}"></label>
+      <label class="field"><span>카페 이름</span><input id="cafeName" value="${esc(c.cafeName)}" placeholder="블루보틀 성수"></label>
+      <div class="field"><span>위치</span>
+        <textarea id="place" rows="2" placeholder="네이버 지도에서 공유 → 복사한 내용을 붙여넣어요">${esc(placeText(c.place))}</textarea>
+        <div id="placeCard"></div>
+      </div>
+      <label class="field"><span>메뉴</span><input id="menu" value="${esc(c.menu)}" placeholder="핸드드립, 필터 커피"></label>
+      <label class="field"><span>원두 이름</span><input id="beanName" value="${esc(c.beanName)}" placeholder="에티오피아 예가체프 코체레"></label>
+      <div class="field"><span>로스팅</span><div class="pills wrap" id="roast">${ROASTS.map(r => `<button type="button" class="pill ${c.roast === r ? 'on' : ''}" data-r="${r}">${r}</button>`).join('')}</div></div>
+      <div class="field"><span>별점</span><div class="rating-input" id="rating"></div></div>
+      ${flavorField('컵노트 (색으로 기억해요)')}
+      <label class="field"><span>메모</span><textarea id="memo" rows="4" placeholder="분위기, 바리스타 설명, 다시 갈지">${esc(c.memo)}</textarea></label>
+      ${photoField()}
+    </main>`,
+    bind() {
+      const renderPlace = () => {
+        c.place = parsePlace($('#place').value);
+        $('#placeCard').innerHTML = placeCardHtml(c.place, $('#cafeName').value.trim());
+      };
+      renderPlace();
+      bindRating(c);
+      bindFlavorPicker(c);
+      bindPhotoEditor(photos, removed);
+
+      $('#place').addEventListener('input', () => {
+        renderPlace();
+        // 카페 이름이 비어 있으면 지도에서 가져온 이름을 채운다.
+        if (c.place?.name && !$('#cafeName').value.trim()) $('#cafeName').value = c.place.name;
+      });
+      $('#cafeName').addEventListener('input', renderPlace);
+      $('#roast').addEventListener('click', e => {
+        const btn = e.target.closest('[data-r]');
+        if (!btn) return;
+        c.roast = c.roast === btn.dataset.r ? '' : btn.dataset.r;
+        $$('#roast .pill').forEach(p => p.classList.toggle('on', p.dataset.r === c.roast));
+      });
+      $('#save').addEventListener('click', async e => {
+        e.target.disabled = true;
+        c.date = $('#date').value || today();
+        c.cafeName = $('#cafeName').value.trim();
+        c.place = parsePlace($('#place').value);
+        c.menu = $('#menu').value.trim();
+        c.beanName = $('#beanName').value.trim();
+        c.memo = $('#memo').value.trim();
+        c.photoIds = await savePhotos(photos, removed, c.id);
+        c.updatedAt = nowIso();
+        await db.put('cafes', c);
+        location.replace(`#/cafe/${c.id}`);
+      });
+    },
+  };
+}
+
+async function viewCafe({ id }) {
+  const c = await db.get('cafes', id);
+  if (!c) return notFound('#/cafes');
+  const photos = (await Promise.all((c.photoIds || []).map(photoUrl))).filter(Boolean);
+  c.flavors = (c.flavors || []).map(canonicalFlavor);
+  const rows = [['메뉴', c.menu], ['원두', c.beanName], ['로스팅', c.roast]].filter(([, v]) => v);
+
+  return {
+    html: `${bar(esc(c.cafeName || fmtDate(c.date)), { back: '#/cafes', right: `<a class="icon-btn" href="#/cafe-edit/${c.id}" aria-label="수정">${ICON.edit}</a>` })}
+    <main class="page">
+      <p class="sub">${fmtDate(c.date)}</p>
+      ${placeCardHtml(c.place, c.cafeName)}
+      ${rows.length ? `<div class="box">${rows.map(([k, v]) => `<div class="row"><span class="label">${k}</span><span>${esc(v)}</span></div>`).join('')}</div>` : ''}
+      <div class="rating-view">${starsHtml(c.rating || 0)}<span class="rating-num">${c.rating ? c.rating.toFixed(1) : '별점 없음'}</span></div>
+      ${c.flavors.length ? `<div class="flavor-view">${colorBand(c.flavors)}<div class="pills wrap">${c.flavors.map(n => flavorChip(n)).join('')}</div></div>` : ''}
+      ${c.memo ? `<p class="memo">${esc(c.memo)}</p>` : ''}
+      ${photos.length ? `<div class="photos view">${photos.map(u => `<img src="${u}" alt="">`).join('')}</div>` : ''}
+      <button class="btn danger-text block" id="del">기록 삭제</button>
+    </main>`,
+    bind() {
+      $('#del').addEventListener('click', async () => {
+        if (!confirm('이 카페 기록을 삭제할까요? 사진도 함께 삭제돼요.')) return;
+        for (const pid of c.photoIds || []) await db.del('photos', pid);
+        await db.del('cafes', c.id);
+        location.replace('#/cafes');
+      });
+      $$('.photos.view img').forEach(img => img.addEventListener('click', () => showPhoto(img.src)));
+    },
+  };
+}
+
 // ---------- 라우터 ----------
 
 const VIEWS = {
@@ -1025,8 +1221,11 @@ const VIEWS = {
   beans: viewBeans,
   bean: viewBean,
   'bean-edit': viewBeanEdit,
+  cafes: viewCafes,
+  cafe: viewCafe,
+  'cafe-edit': viewCafeForm,
 };
-const TAB_OF = { recipes: 'recipes', recipe: 'recipes', beans: 'beans', bean: 'beans', 'bean-edit': 'beans' };
+const TAB_OF = { recipes: 'recipes', recipe: 'recipes', beans: 'beans', bean: 'beans', 'bean-edit': 'beans', cafes: 'cafes', cafe: 'cafes', 'cafe-edit': 'cafes' };
 
 function parseHash() {
   const [path, query = ''] = (location.hash.slice(1) || '/records').split('?');

@@ -1,7 +1,7 @@
 // 폰 안의 IndexedDB에 모든 데이터를 저장한다. 서버는 없다.
 const DB_NAME = 'handdrip';
-const DB_VERSION = 1;
-const STORES = ['beans', 'recipes', 'brews', 'photos'];
+const DB_VERSION = 2;
+const STORES = ['beans', 'recipes', 'brews', 'photos', 'cafes'];
 
 let dbPromise;
 
